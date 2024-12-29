@@ -1,0 +1,223 @@
+= Gatling Fundamentals
+
+== Links
+
+- https://docs.gatling.io/[Gatling Docs]
+
+- https://github.com/james-willett/gatling-fundamentals-java-api/tree/3.3_ProjectSetup[Training Repo]
+
+- https://docs.gatling.io/reference/install/oss/[Bundle Charts Installation]
+
+- https://github.com/gatling/gatling-maven-plugin-demo-java/tree/main[Gatling Maven Plugin Repo]
+
+- https://docs.gatling.io/reference/script/core/injection/[Injection Reference]
+
+=== Simulations
+'''
+
+.Simulation One (Concepts)
+[source, java]
+----
+class SampleFromApi extends Simulation {
+
+  final HttpProtocolBuilder http_pb = super.http.baseUrl("https://myapi/baseUrl")
+      .acceptHeader("application/json");
+
+  final ScenarioBuilder scn = scenario("Description")
+      .exec(http("Description from Action"))
+        .get("/path")
+      .check(status().in(200, 201, 202))
+      .check(jmesPath("[? id == '1'].name").saveAs("var1")) // Response with fields
+      .pause(5)
+
+      .exec(http("#{var1}"))
+        .get("/param/#{var1}");
+
+  {
+    setUp(scn.injectOpen(1).protocols(http_pb));
+  }
+}
+----
+
+
+.Simulation Two (Checks)
+[source, java]
+----
+
+import io.gatling.javaapi.core.*;
+import io.gatling.javaapi.http.*;
+
+import java.time.Duration;
+import java.util.List;
+
+import static io.gatling.javaapi.core.CoreDsl.*;
+import static io.gatling.javaapi.http.HttpDsl.*;
+
+public class FromComplexApi extends Simulation {
+
+    private HttpProtocolBuilder httpProtocol = http
+            .baseUrl("https://videogamedb.uk/api")
+            .acceptHeader("application/json");
+
+    private ScenarioBuilder scn = scenario("Video Game Db - Section 5 code")
+
+            .exec(http("Get specific game")
+                    .get("/videogame/1")
+                    .check(status().in(200, 201, 202))
+                    .check(jmesPath("name").is("Resident Evil 4")))
+            .pause(1, 10)
+
+            .exec(http("get all video games")
+                    .get("/videogame")
+                    .check(status().not(404), status().not(500))
+                    .check(jmesPath("[1].id").saveAs("gameId")))
+            .pause(Duration.ofMillis(4000))
+
+            .exec(http("Get specific game with Id - #{gameId}")
+                    .get("/videogame/#{gameId}")
+                    .check(jmesPath("name").is("Gran Turismo 3"))
+                    .check(bodyString().saveAs("responseBody")));
+
+    {
+        setUp(
+                scn.injectOpen(atOnceUsers(1))
+        ).protocols(httpProtocol);
+    }
+}
+----
+
+.Simulation Three (Methods)
+[source, java]
+----
+
+import io.gatling.javaapi.core.*;
+import io.gatling.javaapi.http.*;
+
+import java.time.Duration;
+import java.util.List;
+
+import static io.gatling.javaapi.core.CoreDsl.*;
+import static io.gatling.javaapi.http.HttpDsl.*;
+
+public class FromComplexApi extends Simulation {
+
+    private HttpProtocolBuilder httpProtocol = http
+            .baseUrl("https://videogamedb.uk/api")
+            .acceptHeader("application/json");
+
+    private static ChainBuilder getAllVideoGames =
+            exec(http("Get all video games")
+                    .get("/videogame")
+                    .check(status().not(404), status().not(500)));
+
+    private static ChainBuilder getSpecificVideoGame =
+            exec(http("Get specific video game")
+                    .get("/videogame/1")
+                    .check(status().is(200)));
+
+    private ScenarioBuilder scn = scenario("Video Game Db - Section 5 code")
+            .exec(getAllVideoGames)
+            .pause(5)
+            .exec(getSpecificVideoGame)
+            .pause(5)
+            .exec(getAllVideoGames);
+
+    {
+        setUp(
+                scn.injectOpen(atOnceUsers(1))
+        ).protocols(httpProtocol);
+    }
+}
+----
+
+
+.Simulation Four (Looping)
+[source, java]
+----
+
+import io.gatling.javaapi.core.*;
+import io.gatling.javaapi.http.*;
+
+import java.time.Duration;
+import java.util.List;
+
+import static io.gatling.javaapi.core.CoreDsl.*;
+import static io.gatling.javaapi.http.HttpDsl.*;
+
+public class FromComplexApi extends Simulation {
+
+    private HttpProtocolBuilder httpProtocol = http
+            .baseUrl("https://videogamedb.uk/api")
+            .acceptHeader("application/json");
+
+    private static ChainBuilder getAllVideoGames =
+            repeat(3).on(
+                    exec(http("Get all video games")
+                            .get("/videogame")
+                            .check(status().not(404), status().not(500)))
+            );
+
+    private static ChainBuilder getSpecificVideoGame =
+            // ============================
+            repeat(5, "myCounter")
+            // ===============================
+            .on(
+                    exec(http("Get specific video game with id: #{myCounter}")
+                            .get("/videogame/#{myCounter}")
+                            .check(status().is(200)))
+            );
+
+    private ScenarioBuilder scn = scenario("Video Game Db - Section 5 code")
+            .exec(getAllVideoGames)
+            .pause(5)
+            .exec(getSpecificVideoGame)
+            .pause(5)
+            .repeat(2).on(
+                    exec(getAllVideoGames)
+            );
+
+    {
+        setUp(
+                scn.injectOpen(atOnceUsers(1))
+        ).protocols(httpProtocol);
+    }
+}
+----
+
+.Simulation Five (Csv Feeder)
+[source, java]
+----
+
+import io.gatling.javaapi.core.*;
+import io.gatling.javaapi.http.*;
+
+import static io.gatling.javaapi.core.CoreDsl.*;
+import static io.gatling.javaapi.http.HttpDsl.*;
+
+public class SimulationFour extends Simulation {
+
+    private HttpProtocolBuilder httpProtocol = http
+            .baseUrl("https://videogamedb.uk/api")
+            .acceptHeader("application/json");
+
+    private static FeederBuilder.FileBased<String> csvFeeder = csv("data/gameCsvFile.csv").circular();
+
+    private static ChainBuilder getSpecificGame =
+            feed(csvFeeder)
+                    .exec(http("Get video game with name - #{gameName}")
+                    .get("/videogame/#{gameId}")
+                            .check(jmesPath("name").isEL("#{gameName}")));
+
+    private ScenarioBuilder scn = scenario("Video Game Db - Section 6 code")
+            .repeat(10).on(
+                    exec(getSpecificGame)
+                            .pause(1)
+            );
+
+    {
+        setUp(
+                scn.injectOpen(atOnceUsers(1))
+        ).protocols(httpProtocol);
+    }
+}
+----
